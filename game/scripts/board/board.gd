@@ -205,9 +205,11 @@ func _on_tile_clicked(tile: Tile) -> void:
 	if tile.state != Tile.State.ON_BOARD:
 		return
 
+	# Защита от гонок: тайл стал заблокированным между _refresh_blocked_visuals
+	# и обработкой клика. В обычном потоке заблокированные тайлы НЕ получают
+	# событий (mouse_filter = IGNORE, см. _refresh_blocked_visuals), поэтому
+	# тут просто молча выходим — никаких shake/звуков по требованию UX.
 	if not _is_record_free(tile.tile_id):
-		AudioManager.play_sfx(&"tile_blocked")
-		tile.play_shake()
 		return
 
 	var slot_idx: int = _next_empty_slot()
@@ -325,12 +327,10 @@ func _is_record_free(tile_id: int) -> bool:
 	return MatchRules.is_tile_free(_records[tile_id], _records.values())
 
 
-# Плитку, над которой стоит плитка на CLICK_HIDE_LAYER_DIFF и более слоёв выше,
-# делаем «прозрачной» для кликов — иначе глубокие L0 под L1+L2 шапкой иногда
-# воровали тапы у видимых соседей (см. жалобу про «клик уходит на 4 уровня ниже»).
-const CLICK_HIDE_LAYER_DIFF: int = 2
-
-
+# Жёсткое правило: клики ловят ТОЛЬКО полностью свободные плитки.
+# Любая плитка, над которой стоит хоть одна — становится прозрачной для кликов
+# (`mouse_filter = IGNORE`). Это убирает класс ошибок «целюсь в верхний тайл,
+# а игра кликает по тайлу на пару слоёв ниже».
 func _refresh_blocked_visuals() -> void:
 	var all_records: Array = _records.values()
 	for rec in all_records:
@@ -341,8 +341,8 @@ func _refresh_blocked_visuals() -> void:
 			continue
 		var cover_count: int = MatchRules.covering_tile_count(rec, all_records)
 		tile.set_blocked_visual(cover_count > 0, cover_count)
-		var max_diff: int = MatchRules.max_covering_layer_diff(rec, all_records)
-		tile.set_click_passable(max_diff >= CLICK_HIDE_LAYER_DIFF)
+		# passable=true → mouse_filter = IGNORE, плитка не получает события.
+		tile.set_click_passable(cover_count > 0)
 
 
 func _next_empty_slot() -> int:
