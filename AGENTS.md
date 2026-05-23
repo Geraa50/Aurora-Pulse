@@ -29,5 +29,5 @@ ast-index rebuild
 
 1. One complete level  
 2. Touch-only  
-3. Score or progress HUD  
+3. Progress HUD
 4. Licensed assets in `docs/ASSETS.md`

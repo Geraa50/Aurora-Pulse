@@ -8,7 +8,7 @@ extends Control
 ##    в первый свободный слот (state = IN_SLOT). Иначе — shake.
 ## 2) Клик по IN_SLOT плитке: возврат домой (отмена выбора).
 ## 3) Когда все 3 слота заполнены — авто-проверка тройки:
-##    match → play_clear на 3 плитках, очки + прогресс;
+##    match → play_clear на 3 плитках, прогресс;
 ##    no match → play_return_home, ничего не теряем.
 ## 4) После любого изменения on-board состава — пересчёт blocked-visual у всех плиток.
 ##
@@ -35,6 +35,10 @@ const HALF_CELL: Vector2 = Vector2(84, 104)  # такая, чтобы 2 half-cel
 const LAYER_LIFT: Vector2 = Vector2(-6, -10)
 const SLOT_COUNT: int = 3
 const DUPLICATE_CLICK_MS: int = 140
+# Отступ от краёв PlayArea, чтобы пирамида не упиралась в стенки.
+const BOARD_MARGIN: float = 24.0
+# Минимальный масштаб плиток — ниже становится нечитаемо.
+const MIN_TILE_SCALE: float = 0.45
 
 @export var current_level: int = 1
 
@@ -56,15 +60,26 @@ var _resolving: bool = false
 var _building: bool = false
 var _last_click_tile_id: int = -1
 var _last_click_msec: int = -1000
+# Монотонный токен текущего билда. Каждый новый build_level увеличивает счётчик;
+# асинхронные продолжения предыдущего билда сравнивают токен и тихо выходят.
+var _build_token: int = 0
+# Текущий масштаб пирамиды (автоподгонка под PlayArea). Используется при
+# вычислении home-позиций тайлов и при возврате тайла из слота на доску.
+var _board_scale: float = 1.0
 
 
 func _ready() -> void:
 	_style_slots()
-	build_level(current_level)
+	# Уровень строит game_screen.gd через build_level(GameState.level), как только
+	# подключил сигналы. Здесь второй build_level(1) только создавал гонку
+	# (две async-инстанции _layout_tiles), из-за которой при старте сразу
+	# с 10 уровня доска иногда раскладывалась неправильно.
 
 
 ## Перестроить доску под указанный уровень.
 func build_level(level: int) -> void:
+	_build_token += 1
+	var my_token: int = _build_token
 	_building = true
 	current_level = level
 	_clear_all()
@@ -87,6 +102,8 @@ func build_level(level: int) -> void:
 	# Гарантируем, что PanelContainer и дети получили валидные размеры
 	# (на первом фрейме после instantiate Control.size может быть Vector2.ZERO).
 	await get_tree().process_frame
+	if my_token != _build_token:
+		return
 
 	_layout_tiles()
 	_refresh_blocked_visuals()
@@ -96,32 +113,54 @@ func build_level(level: int) -> void:
 
 # --- Layout --------------------------------------------------------------
 
+## Раскладывает плитки в PlayArea с автоматическим масштабом: пирамида
+## всегда умещается между BOARD_MARGIN-ами, даже когда тайлов много
+## (уровни 7+ имеют L0+L1+L2 и в raw-координатах bbox ≈ 1000×1032 — может
+## не помещаться на 3:4 планшетах и узких 9:21 устройствах).
 func _layout_tiles() -> void:
 	if _records.is_empty():
 		return
 
-	# Сначала ставим каждую плитку в "сырую" позицию (без центрирования).
+	# 1. Bounding box в "сырых" координатах (до масштабирования).
 	var min_x: float = INF
 	var min_y: float = INF
 	var max_x: float = -INF
 	var max_y: float = -INF
 	for rec in _records.values():
-		var tile: Tile = rec["node"]
 		var raw: Vector2 = _raw_position(rec["grid_x"], rec["grid_y"], rec["layer"])
-		tile.position = raw
 		min_x = min(min_x, raw.x)
 		min_y = min(min_y, raw.y)
 		max_x = max(max_x, raw.x + TILE_SIZE.x)
 		max_y = max(max_y, raw.y + TILE_SIZE.y)
 
-	# Центрируем bounding box внутри PlayArea.
 	var bbox: Vector2 = Vector2(max_x - min_x, max_y - min_y)
 	var area_size: Vector2 = _play_area.size
-	var offset: Vector2 = (area_size - bbox) * 0.5 - Vector2(min_x, min_y)
+
+	# 2. Вычисляем масштаб, чтобы bbox влез в (area_size - 2*BOARD_MARGIN).
+	#    Никогда не увеличиваем (s ≤ 1), иначе на маленьких уровнях плитки
+	#    стали бы гигантскими и UI визуально "ломался".
+	var avail_x: float = max(area_size.x - BOARD_MARGIN * 2.0, 1.0)
+	var avail_y: float = max(area_size.y - BOARD_MARGIN * 2.0, 1.0)
+	var s: float = min(1.0, min(avail_x / bbox.x, avail_y / bbox.y))
+	s = max(s, MIN_TILE_SCALE)
+	_board_scale = s
+
+	# 3. Расставляем плитки. Каждая плитка имеет pivot = TILE_SIZE/2, scale = (s,s).
+	#    После масштабирования визуальный top-left плитки = position + pivot*(1-s),
+	#    визуальный размер = TILE_SIZE*s. Расстояние между центрами =
+	#    (raw_b - raw_a) * s. Поэтому ставим position = raw*s + shift, где
+	#    shift подбирается так, чтобы визуальный bbox оказался в центре PlayArea.
+	var pivot: Vector2 = TILE_SIZE * 0.5
+	var shift_x: float = area_size.x * 0.5 - pivot.x * (1.0 - s) - (min_x + max_x) * 0.5 * s
+	var shift_y: float = area_size.y * 0.5 - pivot.y * (1.0 - s) - (min_y + max_y) * 0.5 * s
+	var shift: Vector2 = Vector2(shift_x, shift_y)
 
 	for rec in _records.values():
 		var tile: Tile = rec["node"]
-		tile.position += offset
+		var raw: Vector2 = _raw_position(rec["grid_x"], rec["grid_y"], rec["layer"])
+		tile.scale = Vector2(s, s)
+		tile.home_scale = Vector2(s, s)
+		tile.position = raw * s + shift
 		tile.home_position = tile.position
 		tile.z_index = tile.layer_z_index()
 
@@ -167,6 +206,7 @@ func _on_tile_clicked(tile: Tile) -> void:
 		return
 
 	if not _is_record_free(tile.tile_id):
+		AudioManager.play_sfx(&"tile_blocked")
 		tile.play_shake()
 		return
 
@@ -175,6 +215,7 @@ func _on_tile_clicked(tile: Tile) -> void:
 		# Все 3 слота уже заняты — игнорируем (резолв должен был отработать).
 		return
 
+	AudioManager.play_sfx(&"tile_tap")
 	_send_tile_to_slot(tile, slot_idx)
 
 	if _all_slots_full():
@@ -216,6 +257,7 @@ func _resolve_triple() -> void:
 	await get_tree().create_timer(0.2).timeout
 
 	if MatchRules.is_valid_triple(data):
+		AudioManager.play_sfx(&"triple_match")
 		await _clear_triple(triple)
 	else:
 		await _bounce_back_triple(triple)
@@ -252,13 +294,21 @@ func _clear_triple(triple: Array) -> void:
 func _bounce_back_triple(triple: Array) -> void:
 	for t in triple:
 		_set_record_on_board(int(t.tile_id), true)
-		t.play_shake()
-	# Дать shake завершиться визуально, потом вернуть домой.
-	await get_tree().create_timer(0.25).timeout
+	for i in range(triple.size()):
+		var t: Tile = triple[i]
+		t.play_slot_reject()
+		if i < triple.size() - 1:
+			await get_tree().create_timer(0.04).timeout
+	# Дать отказу в слотах завершиться визуально, потом вернуть тайлы на поле.
+	await get_tree().create_timer(0.22).timeout
+	AudioManager.play_sfx(&"triple_fail")
 	triple_failed.emit()
-	for t in triple:
+	for i in range(triple.size()):
+		var t: Tile = triple[i]
 		t.play_return_home()
-	await get_tree().create_timer(0.3).timeout
+		if i < triple.size() - 1:
+			await get_tree().create_timer(0.05).timeout
+	await get_tree().create_timer(0.32).timeout
 	_refresh_blocked_visuals()
 
 
@@ -275,13 +325,24 @@ func _is_record_free(tile_id: int) -> bool:
 	return MatchRules.is_tile_free(_records[tile_id], _records.values())
 
 
+# Плитку, над которой стоит плитка на CLICK_HIDE_LAYER_DIFF и более слоёв выше,
+# делаем «прозрачной» для кликов — иначе глубокие L0 под L1+L2 шапкой иногда
+# воровали тапы у видимых соседей (см. жалобу про «клик уходит на 4 уровня ниже»).
+const CLICK_HIDE_LAYER_DIFF: int = 2
+
+
 func _refresh_blocked_visuals() -> void:
-	for rec in _records.values():
+	var all_records: Array = _records.values()
+	for rec in all_records:
 		var tile: Tile = rec["node"]
 		if tile.state != Tile.State.ON_BOARD:
+			# В слоте плитка всегда кликабельна (её можно вернуть тапом).
+			tile.set_click_passable(false)
 			continue
-		var cover_count: int = MatchRules.covering_tile_count(rec, _records.values())
+		var cover_count: int = MatchRules.covering_tile_count(rec, all_records)
 		tile.set_blocked_visual(cover_count > 0, cover_count)
+		var max_diff: int = MatchRules.max_covering_layer_diff(rec, all_records)
+		tile.set_click_passable(max_diff >= CLICK_HIDE_LAYER_DIFF)
 
 
 func _next_empty_slot() -> int:

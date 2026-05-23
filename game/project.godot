@@ -19,6 +19,7 @@ config/icon="res://icon.svg"
 [autoload]
 
 GameState="*res://scripts/autoload/game_state.gd"
+AudioManager="*res://scripts/autoload/audio_manager.gd"
 
 [display]
 
@@ -28,7 +29,6 @@ window/size/window_width_override=720
 window/size/window_height_override=1280
 window/stretch/mode="canvas_items"
 window/stretch/aspect="expand"
-window/stretch/scale=1.0
 window/handheld/orientation=1
 
 [input]
@@ -41,9 +41,7 @@ touch_only={
 [input_devices]
 
 pointing/emulate_touch_from_mouse=true
-pointing/emulate_mouse_from_touch=true
 
 [rendering]
 
-textures/canvas_textures/default_texture_filter=1
 environment/defaults/default_clear_color=Color(0.043, 0.055, 0.165, 1)

@@ -25,7 +25,7 @@ git submodule update --init --recursive
 |-------------|--------|
 | ≥ 1 complete level | Planned (Phase 2) |
 | Touch-only control | UI buttons; no keyboard in export |
-| Score / progress | HUD stub in `game/scenes/game.tscn` |
+| Progress | HUD stub in `game/scenes/game.tscn` |
 | Original / open assets | Track in [`docs/ASSETS.md`](docs/ASSETS.md) |
 
 ## Project layout

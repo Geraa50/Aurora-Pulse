@@ -79,6 +79,22 @@ theme_override_colors/font_color = Color(0.941, 0.957, 1, 1)
 theme_override_font_sizes/font_size = 52
 text = "Играть"
 
+[node name="Level10Button" type="Button" parent="SafeArea/VBox"]
+custom_minimum_size = Vector2(0, 150)
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_colors/font_color = Color(0.941, 0.957, 1, 1)
+theme_override_font_sizes/font_size = 52
+text = "Уровень 10"
+
+[node name="ResetButton" type="Button" parent="SafeArea/VBox"]
+custom_minimum_size = Vector2(0, 120)
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_colors/font_color = Color(0.604, 0.639, 0.78, 1)
+theme_override_font_sizes/font_size = 40
+text = "Сброс прогресса"
+
 [node name="ExitButton" type="Button" parent="SafeArea/VBox"]
 custom_minimum_size = Vector2(0, 150)
 layout_mode = 2
@@ -86,3 +102,9 @@ size_flags_horizontal = 3
 theme_override_colors/font_color = Color(0.941, 0.957, 1, 1)
 theme_override_font_sizes/font_size = 52
 text = "Выйти"
+
+[node name="ResetConfirmDialog" type="ConfirmationDialog" parent="."]
+title = "Сброс прогресса"
+ok_button_text = "Сбросить"
+dialog_text = "Сбросить прогресс и вернуться к уровню 1?"
+cancel_button_text = "Отмена"

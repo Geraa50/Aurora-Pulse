@@ -56,6 +56,34 @@ static func covering_tile_count(tile: Dictionary, all_tiles: Array) -> int:
 	return count
 
 
+## Максимальная разница слоёв среди плиток, перекрывающих эту.
+## Используется как «глубина закрытия» для определения, можно ли вообще
+## кликать по плитке: если она спрятана под плитками на 2+ слоя выше,
+## клики должны проваливаться сквозь неё на верхнюю плитку.
+## 0 — плитка свободна (никто не перекрывает).
+static func max_covering_layer_diff(tile: Dictionary, all_tiles: Array) -> int:
+	var tid: int = int(tile.get("id", -1))
+	var tx: int = int(tile.get("grid_x", 0))
+	var ty: int = int(tile.get("grid_y", 0))
+	var tl: int = int(tile.get("layer", 0))
+	var max_diff: int = 0
+	for other in all_tiles:
+		if int(other.get("id", -1)) == tid:
+			continue
+		if not bool(other.get("on_board", true)):
+			continue
+		var ol: int = int(other.get("layer", 0))
+		if ol <= tl:
+			continue
+		var ox: int = int(other.get("grid_x", 0))
+		var oy: int = int(other.get("grid_y", 0))
+		if abs(ox - tx) < 2 and abs(oy - ty) < 2:
+			var diff: int = ol - tl
+			if diff > max_diff:
+				max_diff = diff
+	return max_diff
+
+
 ## Есть ли хоть одна валидная sequentially-collectible тройка среди
 ## оставшихся on-board плиток. Используется для детекта тупика.
 static func has_any_triple(all_tiles: Array) -> bool:

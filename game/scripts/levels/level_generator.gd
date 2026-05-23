@@ -3,6 +3,8 @@ extends RefCounted
 ## Генератор многослойных раскладок маджонга. Гарантирует решаемость
 ## через reverse-simulation: каждая положенная тройка должна быть
 ## **sequentially collectible** на доске = (уже placed) ∪ {эта тройка}.
+## На многослойных уровнях генератор предпочитает тройки со смешанными
+## слоями, чтобы игрок регулярно собирал совпадения между разными высотами.
 ##
 ## Координатная система — **half-step grid**:
 ##   Плитка занимает 2 half-cells × 2 half-cells. Верхние слои смещены
@@ -100,30 +102,57 @@ static func generate(level: int, rng_seed: int = -1) -> Array:
 		return da < db
 	)
 
-	# Pool типов: подмножество из 27, размер растёт с уровнем.
-	var types_count: int = clamp(2 + level, 3, 9)
-	var all_types: PackedStringArray = TileTypes.all_types()
-	var pool: Array = []
-	for t in all_types:
-		pool.append(t)
-	pool.shuffle()
-	var chosen: Array = pool.slice(0, types_count)
+	# Pool типов: **один тип на ранг**. Это инвариант, который игроки видят:
+	# одинаковая цифра на тайлах ВСЕГДА означает одинаковый тип/цвет (= match).
+	# Иначе на уровне попадались, например, `bamboo_5` и `circle_5` — оба
+	# показывают «5», но не складываются, что путало пользователя.
+	#
+	# При triple_count > 9 (большие уровни) типы зацикливаются: один тип может
+	# дать 2-3 тройки (= 6-9 тайлов), но никогда не появятся ДВА разных типа с
+	# одной цифрой. До 9 троек — каждая тройка уникального цвета и ранга.
+	var triple_count: int = all_slots.size() / 3
+	var chosen: Array = _pick_unique_rank_types(triple_count, rng)
 
 	var placed: Array = []
+	var type_index: int = 0
 
 	while remaining.size() >= 3:
-		var picks: Array = _find_3_collectible(remaining, placed)
+		var picks: Array = _find_3_collectible(remaining, placed, level >= 3)
 		if picks.is_empty():
 			# Fallback на pyramid-форме практически не встречается.
 			picks = remaining.slice(0, 3)
 
-		var type_id: String = chosen[rng.randi() % chosen.size()]
+		var type_id: String = chosen[type_index % chosen.size()]
+		type_index += 1
 		for s in picks:
 			s["type"] = type_id
 			placed.append(s)
 			_remove_by_id(remaining, int(s["id"]))
 
 	return placed
+
+
+## Возвращает массив типов с уникальным рангом (`{bamboo,circle,char}_<rank>` —
+## выбирается случайная масть на каждый ранг). Размер массива — min(want_count, 9).
+## Вызвавший должен зацикливать его, если троек больше 9.
+static func _pick_unique_rank_types(want_count: int, rng: RandomNumberGenerator) -> Array:
+	var by_rank: Dictionary = {}
+	for t in TileTypes.all_types():
+		var rank: String = TileTypes.rank_of(t)
+		if not by_rank.has(rank):
+			by_rank[rank] = []
+		(by_rank[rank] as Array).append(t)
+
+	var ranks: Array = by_rank.keys()
+	_shuffle_array(ranks, rng)
+
+	var unique_count: int = clamp(want_count, 3, ranks.size())
+	var out: Array = []
+	for i in range(unique_count):
+		var suits: Array = by_rank[ranks[i]]
+		_shuffle_array(suits, rng)
+		out.append(suits[0])
+	return out
 
 
 # --- internals ------------------------------------------------------------
@@ -155,9 +184,19 @@ static func _remove_by_id(arr: Array, target_id: int) -> void:
 			return
 
 
+static func _shuffle_array(arr: Array, rng: RandomNumberGenerator) -> void:
+	for i in range(arr.size() - 1, 0, -1):
+		var j: int = rng.randi_range(0, i)
+		var tmp: Variant = arr[i]
+		arr[i] = arr[j]
+		arr[j] = tmp
+
+
 ## Жадный поиск тройки, sequentially collectible на (placed ∪ тройка).
-## Перебор в порядке remaining (pre-sorted) — берём первую подходящую.
-static func _find_3_collectible(remaining: Array, placed: Array) -> Array:
+## На многослойных уровнях выбираем лучшую mixed-layer тройку, если она есть.
+static func _find_3_collectible(remaining: Array, placed: Array, prefer_mixed_layers: bool = false) -> Array:
+	var best_mixed: Array = []
+	var best_mixed_score: int = -1
 	var n: int = remaining.size()
 	for i in range(n):
 		var c1: Dictionary = remaining[i]
@@ -169,9 +208,44 @@ static func _find_3_collectible(remaining: Array, placed: Array) -> Array:
 				if k == i or k == j:
 					continue
 				var c3: Dictionary = remaining[k]
-				if _can_collect_triple([c1, c2, c3], placed):
-					return [c1, c2, c3]
-	return []
+				var triple: Array = [c1, c2, c3]
+				if not _can_collect_triple(triple, placed):
+					continue
+				if not prefer_mixed_layers:
+					return triple
+				var mixed_score: int = _mixed_layer_score(triple)
+				if mixed_score <= 0:
+					if best_mixed.is_empty():
+						best_mixed = triple
+						best_mixed_score = 0
+					continue
+				if mixed_score > best_mixed_score:
+					best_mixed = triple
+					best_mixed_score = mixed_score
+					if best_mixed_score >= 3:
+						return best_mixed
+	return best_mixed
+
+
+## Оценка mixed-layer тройки:
+## 3 — два тайла на одном верхнем слое, третий ниже;
+## 2 — любой другой набор из разных слоёв;
+## 0 — все три на одном слое.
+static func _mixed_layer_score(triple: Array) -> int:
+	var counts: Dictionary = {}
+	var min_layer: int = 999
+	var max_layer: int = -999
+	for t in triple:
+		var layer: int = int(t["layer"])
+		counts[layer] = int(counts.get(layer, 0)) + 1
+		min_layer = min(min_layer, layer)
+		max_layer = max(max_layer, layer)
+	if min_layer == max_layer:
+		return 0
+	for layer in counts.keys():
+		if int(counts[layer]) == 2 and int(layer) == max_layer:
+			return 3
+	return 2
 
 
 ## Можно ли собрать тройку sequentially на доске = (placed ∪ triple).

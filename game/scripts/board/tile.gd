@@ -4,7 +4,7 @@ extends Control
 ##
 ## Состояния (логические):
 ##   ON_BOARD — лежит на доске, может перекрывать нижние плитки.
-##   IN_SLOT  — переехала в слот выбора, временно не блокирует.
+##   IN_SLOT  — переехала в слот выбора, временно не перекрывает нижние плитки.
 ##   DYING    — анимация исчезновения после успешной тройки, скоро queue_free.
 ##
 ## Визуальные состояния:
@@ -29,6 +29,12 @@ enum State { ON_BOARD, IN_SLOT, DYING }
 
 var state: int = State.ON_BOARD
 var home_position: Vector2 = Vector2.ZERO
+# Масштаб, с которым плитка лежит на доске. Board выставляет его при раскладке,
+# чтобы пирамида всегда влезала в PlayArea (см. board.gd::_layout_tiles).
+# Анимации press-bounce / return-home / settle используют home_scale как
+# базу — иначе после возврата из слота на больших уровнях плитка стала бы
+# полноразмерной и сломала бы сетку.
+var home_scale: Vector2 = Vector2.ONE
 
 # --- Visual constants (см. docs/STYLE.md §4) -----------------------------
 
@@ -82,9 +88,22 @@ func set_blocked_visual(blocked: bool, cover_count: int = 0) -> void:
 	var normalized_cover_count: int = clamp(cover_count, 0, 4)
 	if _is_blocked_visual == blocked and _cover_count == normalized_cover_count:
 		return
+	var was_blocked: bool = _is_blocked_visual
 	_is_blocked_visual = blocked
 	_cover_count = normalized_cover_count
+	if blocked:
+		_is_hovered = false
 	_apply_visual()
+	if state == State.ON_BOARD and was_blocked != blocked:
+		_settle_on_board_position()
+
+
+## Разрешить или запретить клики по плитке.
+## Если над тайлом стоят плитки на 2+ слоя выше — клики по нему игнорируются,
+## чтобы они «проваливались» сразу на верхнюю кликабельную плитку. Без этого
+## глубокие L0 под полным L1+L2 крышкой иногда перехватывали тапы у соседей.
+func set_click_passable(passable: bool) -> void:
+	mouse_filter = Control.MOUSE_FILTER_IGNORE if passable else Control.MOUSE_FILTER_STOP
 
 
 # --- Animations ----------------------------------------------------------
@@ -94,8 +113,8 @@ func play_press_bounce() -> void:
 	_kill_tween()
 	_active_tween = create_tween()
 	_active_tween.set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
-	_active_tween.tween_property(self, "scale", Vector2(1.08, 1.08), 0.08)
-	_active_tween.tween_property(self, "scale", Vector2.ONE, 0.08)
+	_active_tween.tween_property(self, "scale", home_scale * 1.08, 0.08)
+	_active_tween.tween_property(self, "scale", home_scale, 0.08)
 
 
 ## Прокликнули по заблокированной → shake + отказ.
@@ -108,6 +127,22 @@ func play_shake() -> void:
 	_active_tween.tween_property(self, "position:x", home_position.x - SHAKE_AMP, t)
 	_active_tween.tween_property(self, "position:x", home_position.x + SHAKE_AMP * 0.5, t)
 	_active_tween.tween_property(self, "position:x", home_position.x, t)
+
+
+## Мягкий отказ в слотах: коротко качает выбранные тайлы вокруг текущего слота.
+## Скейл специально НЕ меняем — тайл остаётся на SELECT_SCALE и сразу же из этой
+## позиции плавно «уезжает» назад через play_return_home. Любое изменение скейла
+## во время реджекта приводило к двойному дёрганию (1.06 → 1.0 → home_scale).
+func play_slot_reject() -> void:
+	_kill_tween()
+	var origin: Vector2 = position
+	_active_tween = create_tween()
+	_active_tween.set_trans(Tween.TRANS_SINE)
+	var t: float = 0.045
+	_active_tween.tween_property(self, "position:x", origin.x + SHAKE_AMP * 0.65, t)
+	_active_tween.tween_property(self, "position:x", origin.x - SHAKE_AMP * 0.65, t)
+	_active_tween.tween_property(self, "position:x", origin.x + SHAKE_AMP * 0.3, t)
+	_active_tween.tween_property(self, "position:x", origin.x, t)
 
 
 ## Анимация перелёта в позицию слота (Board вызывает после reparent).
@@ -123,15 +158,20 @@ func play_move_to(target_position: Vector2, duration: float = 0.22) -> void:
 
 
 ## Анимация возврата на доску (Board уже сделал reparent в BoardArea).
+##
+## Важно: z_index ОСТАЁТСЯ высоким (1000) до окончания твина и только потом
+## сбрасывается до layer_z_index(). Иначе тайл, летящий назад из слота, на пути
+## частично прячется ЗА оставшиеся плитки доски и анимация смотрится «криво».
 func play_return_home(duration: float = 0.3) -> void:
 	_kill_tween()
 	state = State.ON_BOARD
-	z_index = layer_z_index()
+	_apply_visual()
 	_active_tween = create_tween()
 	_active_tween.set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
 	_active_tween.tween_property(self, "position", home_position, duration)
-	_active_tween.parallel().tween_property(self, "scale", Vector2.ONE, duration)
+	_active_tween.parallel().tween_property(self, "scale", home_scale, duration)
 	await _active_tween.finished
+	z_index = layer_z_index()
 	_apply_visual()
 
 
@@ -155,6 +195,16 @@ func _kill_tween() -> void:
 	_active_tween = null
 
 
+func _settle_on_board_position(duration: float = 0.12) -> void:
+	if position.distance_to(home_position) <= 0.5 and scale.distance_to(home_scale) <= 0.01:
+		return
+	_kill_tween()
+	_active_tween = create_tween()
+	_active_tween.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	_active_tween.tween_property(self, "position", home_position, duration)
+	_active_tween.parallel().tween_property(self, "scale", home_scale, duration)
+
+
 func _apply_visual() -> void:
 	if not is_node_ready():
 		return
@@ -162,9 +212,9 @@ func _apply_visual() -> void:
 	var sb := StyleBoxFlat.new()
 	var base: Color = TileTypes.color_for(type_id)
 	if _is_blocked_visual:
-		var cover_strength: float = 0.55 + float(_cover_count) * 0.1
-		base = base.lerp(TileTypes.BLOCKED_TINT, clamp(cover_strength, 0.55, 0.9))
-		base = base.darkened(0.08 + float(_cover_count) * 0.04)
+		# Сохраняем оттенок типа: одинаковые тайлы должны оставаться узнаваемыми
+		# даже когда нижний слой затемнён перекрытием.
+		base = base.darkened(0.34 + float(_cover_count) * 0.08)
 	sb.bg_color = base
 	sb.corner_radius_top_left = CORNER_RADIUS
 	sb.corner_radius_top_right = CORNER_RADIUS
