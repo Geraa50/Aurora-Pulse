@@ -51,13 +51,35 @@ layout_mode = 2
 theme_override_constants/separation = 40
 alignment = 1
 
-[node name="Title" type="Label" parent="SafeArea/VBox"]
+[node name="TitleRow" type="Control" parent="SafeArea/VBox"]
+custom_minimum_size = Vector2(0, 132)
 layout_mode = 2
 size_flags_horizontal = 3
+
+[node name="Title" type="Label" parent="SafeArea/VBox/TitleRow"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
 theme_override_colors/font_color = Color(0.941, 0.957, 1, 1)
 theme_override_font_sizes/font_size = 112
 text = "Aurora Pulse"
 horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="Level10Button" type="Button" parent="SafeArea/VBox/TitleRow"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+focus_mode = 0
+flat = true
+text = ""
 
 [node name="Subtitle" type="Label" parent="SafeArea/VBox"]
 layout_mode = 2
@@ -78,14 +100,6 @@ size_flags_horizontal = 3
 theme_override_colors/font_color = Color(0.941, 0.957, 1, 1)
 theme_override_font_sizes/font_size = 52
 text = "Играть"
-
-[node name="Level10Button" type="Button" parent="SafeArea/VBox"]
-custom_minimum_size = Vector2(0, 150)
-layout_mode = 2
-size_flags_horizontal = 3
-theme_override_colors/font_color = Color(0.941, 0.957, 1, 1)
-theme_override_font_sizes/font_size = 52
-text = "Уровень 10"
 
 [node name="ResetButton" type="Button" parent="SafeArea/VBox"]
 custom_minimum_size = Vector2(0, 120)
