@@ -66,6 +66,9 @@ var _build_token: int = 0
 # Текущий масштаб пирамиды (автоподгонка под PlayArea). Используется при
 # вычислении home-позиций тайлов и при возврате тайла из слота на доску.
 var _board_scale: float = 1.0
+# Предрасчёт перекрытий уровня (LevelGenerator.build_coverer_map) — O(соседи)
+# вместо O(n) на каждую плитку в _refresh_blocked_visuals.
+var _coverer_map: Dictionary = {}
 
 
 func _ready() -> void:
@@ -85,6 +88,7 @@ func build_level(level: int) -> void:
 	_clear_all()
 
 	var tiles_data: Array = LevelGenerator.generate(level)
+	_coverer_map = LevelGenerator.build_coverer_map(tiles_data)
 	_initial_count = tiles_data.size()
 	_remaining_count = _initial_count
 
@@ -324,7 +328,17 @@ func _set_record_on_board(tile_id: int, on_board: bool) -> void:
 func _is_record_free(tile_id: int) -> bool:
 	if not _records.has(tile_id):
 		return false
-	return MatchRules.is_tile_free(_records[tile_id], _records.values())
+	return _covering_on_board_count(tile_id) == 0
+
+
+func _covering_on_board_count(tile_id: int) -> int:
+	var count: int = 0
+	for coverer_id in _coverer_map.get(tile_id, []):
+		if not _records.has(coverer_id):
+			continue
+		if bool(_records[coverer_id].get("on_board", true)):
+			count += 1
+	return count
 
 
 # Жёсткое правило: клики ловят ТОЛЬКО полностью свободные плитки.
@@ -332,14 +346,14 @@ func _is_record_free(tile_id: int) -> bool:
 # (`mouse_filter = IGNORE`). Это убирает класс ошибок «целюсь в верхний тайл,
 # а игра кликает по тайлу на пару слоёв ниже».
 func _refresh_blocked_visuals() -> void:
-	var all_records: Array = _records.values()
-	for rec in all_records:
+	for rec in _records.values():
 		var tile: Tile = rec["node"]
 		if tile.state != Tile.State.ON_BOARD:
 			# В слоте плитка всегда кликабельна (её можно вернуть тапом).
 			tile.set_click_passable(false)
 			continue
-		var cover_count: int = MatchRules.covering_tile_count(rec, all_records)
+		var tile_id: int = int(rec["id"])
+		var cover_count: int = _covering_on_board_count(tile_id)
 		tile.set_blocked_visual(cover_count > 0, cover_count)
 		# passable=true → mouse_filter = IGNORE, плитка не получает события.
 		tile.set_click_passable(cover_count > 0)
@@ -381,5 +395,6 @@ func _clear_all() -> void:
 		if t and is_instance_valid(t):
 			t.queue_free()
 	_records.clear()
+	_coverer_map.clear()
 	_slot_occupants = [null, null, null]
 	_resolving = false

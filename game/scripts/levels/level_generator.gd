@@ -20,6 +20,33 @@ extends RefCounted
 ##
 ## Сравнение слотов — по уникальному id (Dictionary в GDScript сравниваются deep).
 
+# Ограничение перебора троек на больших уровнях (см. _find_3_collectible).
+const SEARCH_CANDIDATE_CAP: int = 18
+const COLLECT_CACHE_MAX_ENTRIES: int = 12000
+
+
+## Предрасчёт «кто кого перекрывает» для всех слотов уровня.
+## coverers[tile_id] → Array[int] id плиток выше, чьи 2×2 half-cells накрывают tile.
+## Используется генератором и Board._refresh_blocked_visuals.
+static func build_coverer_map(slots: Array) -> Dictionary:
+	var coverers: Dictionary = {}
+	for s in slots:
+		coverers[int(s["id"])] = []
+	for s in slots:
+		var sid: int = int(s["id"])
+		var sx: int = int(s["grid_x"])
+		var sy: int = int(s["grid_y"])
+		var sl: int = int(s["layer"])
+		for other in slots:
+			var oid: int = int(other["id"])
+			if oid == sid:
+				continue
+			if int(other["layer"]) <= sl:
+				continue
+			if abs(int(other["grid_x"]) - sx) < 2 and abs(int(other["grid_y"]) - sy) < 2:
+				(coverers[sid] as Array).append(oid)
+	return coverers
+
 
 ## Возвращает список слотов { id, grid_x, grid_y, layer } для уровня.
 ## grid_x, grid_y — в half-step единицах.
@@ -113,11 +140,19 @@ static func generate(level: int, rng_seed: int = -1) -> Array:
 	var triple_count: int = all_slots.size() / 3
 	var chosen: Array = _pick_unique_rank_types(triple_count, rng)
 
+	var ctx: Dictionary = {
+		"coverers": build_coverer_map(all_slots),
+		"collect_cache": {},
+	}
 	var placed: Array = []
+	var remaining_index: Dictionary = {}
+	for i in range(remaining.size()):
+		remaining_index[int(remaining[i]["id"])] = i
 	var type_index: int = 0
+	var prefer_mixed: bool = level >= 3
 
 	while remaining.size() >= 3:
-		var picks: Array = _find_3_collectible(remaining, placed, level >= 3)
+		var picks: Array = _find_3_collectible(remaining, placed, ctx, prefer_mixed)
 		if picks.is_empty():
 			# Fallback на pyramid-форме практически не встречается.
 			picks = remaining.slice(0, 3)
@@ -127,7 +162,7 @@ static func generate(level: int, rng_seed: int = -1) -> Array:
 		for s in picks:
 			s["type"] = type_id
 			placed.append(s)
-			_remove_by_id(remaining, int(s["id"]))
+			_remove_from_remaining(remaining, remaining_index, int(s["id"]))
 
 	return placed
 
@@ -177,11 +212,18 @@ static func _find_corner_l0_index(slots: Array, cols: int, rows: int) -> int:
 	return -1
 
 
-static func _remove_by_id(arr: Array, target_id: int) -> void:
-	for i in range(arr.size()):
-		if int(arr[i]["id"]) == target_id:
-			arr.remove_at(i)
-			return
+## O(1) удаление из remaining + актуализация индексов (swap-with-last).
+static func _remove_from_remaining(remaining: Array, index_map: Dictionary, target_id: int) -> void:
+	if not index_map.has(target_id):
+		return
+	var idx: int = int(index_map[target_id])
+	var last_idx: int = remaining.size() - 1
+	if idx != last_idx:
+		var swapped: Dictionary = remaining[last_idx]
+		remaining[idx] = swapped
+		index_map[int(swapped["id"])] = idx
+	remaining.resize(last_idx)
+	index_map.erase(target_id)
 
 
 static func _shuffle_array(arr: Array, rng: RandomNumberGenerator) -> void:
@@ -193,38 +235,121 @@ static func _shuffle_array(arr: Array, rng: RandomNumberGenerator) -> void:
 
 
 ## Жадный поиск тройки, sequentially collectible на (placed ∪ тройка).
-## На многослойных уровнях выбираем лучшую mixed-layer тройку, если она есть.
-static func _find_3_collectible(remaining: Array, placed: Array, prefer_mixed_layers: bool = false) -> Array:
+## На больших уровнях: i<j<k (в 6× меньше перебор), кэш collectibility,
+## сначала верхние слои (SEARCH_CANDIDATE_CAP), при неудаче — полный скан.
+static func _find_3_collectible(
+	remaining: Array,
+	placed: Array,
+	ctx: Dictionary,
+	prefer_mixed_layers: bool,
+) -> Array:
+	var quick: Array = _try_quick_collectible_triple(remaining, placed, ctx, prefer_mixed_layers)
+	if not quick.is_empty():
+		return quick
+	if prefer_mixed_layers:
+		quick = _try_quick_collectible_triple(remaining, placed, ctx, false)
+		if not quick.is_empty():
+			return quick
+	var use_cap: bool = remaining.size() > SEARCH_CANDIDATE_CAP
+	# Только ограниченный перебор; полный O(n³) по всем remaining убран — он подвисал на ур. 10+.
+	return _scan_collectible_triples(remaining, placed, ctx, false, use_cap)
+
+
+## Быстрый путь: перебор только среди «верхних» кандидатов (≤10), ранний выход.
+static func _try_quick_collectible_triple(
+	remaining: Array,
+	placed: Array,
+	ctx: Dictionary,
+	require_mixed: bool,
+) -> Array:
+	var candidates: Array = _select_search_candidates(remaining, 10)
+	var cn: int = candidates.size()
+	var fallback: Array = []
+	for i in range(cn):
+		var c1: Dictionary = candidates[i]
+		for j in range(i + 1, cn):
+			var c2: Dictionary = candidates[j]
+			for k in range(j + 1, cn):
+				var triple: Array = [c1, c2, candidates[k]]
+				if not _can_collect_triple_fast(triple, placed, ctx):
+					continue
+				if not require_mixed:
+					return triple
+				var mixed_score: int = _mixed_layer_score(triple)
+				if mixed_score >= 2:
+					return triple
+				if fallback.is_empty():
+					fallback = triple
+	return fallback
+
+
+static func _scan_collectible_triples(
+	remaining: Array,
+	placed: Array,
+	ctx: Dictionary,
+	prefer_mixed_layers: bool,
+	use_candidate_cap: bool,
+) -> Array:
+	var candidates: Array = remaining
+	if use_candidate_cap:
+		candidates = _select_search_candidates(remaining, SEARCH_CANDIDATE_CAP)
+
 	var best_mixed: Array = []
 	var best_mixed_score: int = -1
-	var n: int = remaining.size()
-	for i in range(n):
-		var c1: Dictionary = remaining[i]
-		for j in range(n):
-			if j == i:
-				continue
-			var c2: Dictionary = remaining[j]
-			for k in range(n):
-				if k == i or k == j:
-					continue
-				var c3: Dictionary = remaining[k]
-				var triple: Array = [c1, c2, c3]
-				if not _can_collect_triple(triple, placed):
+	var cn: int = candidates.size()
+	for i in range(cn):
+		var c1: Dictionary = candidates[i]
+		for j in range(i + 1, cn):
+			var c2: Dictionary = candidates[j]
+			for k in range(j + 1, cn):
+				var triple: Array = [c1, c2, candidates[k]]
+				if not _can_collect_triple_fast(triple, placed, ctx):
 					continue
 				if not prefer_mixed_layers:
 					return triple
 				var mixed_score: int = _mixed_layer_score(triple)
-				if mixed_score <= 0:
-					if best_mixed.is_empty():
-						best_mixed = triple
-						best_mixed_score = 0
-					continue
-				if mixed_score > best_mixed_score:
+				# Достаточно любой кросс-слойной тройки — не ищем идеальный score=3.
+				if mixed_score >= 2:
+					return triple
+				if best_mixed.is_empty():
 					best_mixed = triple
 					best_mixed_score = mixed_score
-					if best_mixed_score >= 3:
-						return best_mixed
+				elif mixed_score > best_mixed_score:
+					best_mixed = triple
+					best_mixed_score = mixed_score
 	return best_mixed
+
+
+static func _select_search_candidates(remaining: Array, cap: int) -> Array:
+	# Чередуем слои (L2, L1, L0, L2, …) — быстрее находим mixed-layer тройки.
+	var by_layer: Dictionary = {}
+	for s in remaining:
+		var layer: int = int(s["layer"])
+		if not by_layer.has(layer):
+			by_layer[layer] = []
+		(by_layer[layer] as Array).append(s)
+	var layers: Array = by_layer.keys()
+	layers.sort()
+	layers.reverse()
+	for layer in layers:
+		var group: Array = by_layer[layer]
+		group.sort_custom(func(a, b): return int(a["grid_y"]) > int(b["grid_y"]))
+	var out: Array = []
+	var round_idx: int = 0
+	while out.size() < cap:
+		var added_any: bool = false
+		for layer in layers:
+			var group: Array = by_layer[layer]
+			if round_idx >= group.size():
+				continue
+			out.append(group[round_idx])
+			added_any = true
+			if out.size() >= cap:
+				break
+		if not added_any:
+			break
+		round_idx += 1
+	return out
 
 
 ## Оценка mixed-layer тройки:
@@ -249,44 +374,62 @@ static func _mixed_layer_score(triple: Array) -> int:
 
 
 ## Можно ли собрать тройку sequentially на доске = (placed ∪ triple).
-## После клика плитка уходит в слот → временно убирается с доски.
-static func _can_collect_triple(triple: Array, placed: Array) -> bool:
-	var board: Array = []
-	for p in placed:
-		board.append(p)
-	for t in triple:
-		board.append(t)
+static func _can_collect_triple_fast(triple: Array, placed: Array, ctx: Dictionary) -> bool:
+	var cache: Dictionary = ctx["collect_cache"]
+	var key: int = _triple_cache_key(triple, placed)
+	if cache.has(key):
+		return bool(cache[key])
 
-	var queue: Array = triple.duplicate()
-	while queue.size() > 0:
+	var coverers: Dictionary = ctx["coverers"]
+	var on_board: Dictionary = {}
+	for p in placed:
+		on_board[int(p["id"])] = true
+	for t in triple:
+		on_board[int(t["id"])] = true
+
+	var queue_ids: Array = [
+		int(triple[0]["id"]),
+		int(triple[1]["id"]),
+		int(triple[2]["id"]),
+	]
+	var pending: int = 3
+	while pending > 0:
 		var free_idx: int = -1
-		for i in range(queue.size()):
-			if _is_free_in(queue[i], board):
+		for i in range(queue_ids.size()):
+			if _is_free_id(int(queue_ids[i]), on_board, coverers):
 				free_idx = i
 				break
 		if free_idx < 0:
+			_cache_collect_result(cache, key, false)
 			return false
-		var taken: Dictionary = queue[free_idx]
-		queue.remove_at(free_idx)
-		_remove_by_id(board, int(taken["id"]))
+		var taken_id: int = int(queue_ids[free_idx])
+		queue_ids.remove_at(free_idx)
+		on_board.erase(taken_id)
+		pending -= 1
+
+	_cache_collect_result(cache, key, true)
 	return true
 
 
-## Free на half-step grid: нет плитки выше, чьи 2×2 half-cells
-## перекрывают эту плитку (|dx|<2 и |dy|<2).
-static func _is_free_in(slot: Dictionary, board: Array) -> bool:
-	var sid: int = int(slot["id"])
-	var sx: int = int(slot["grid_x"])
-	var sy: int = int(slot["grid_y"])
-	var sl: int = int(slot["layer"])
-
-	for other in board:
-		if int(other["id"]) == sid:
-			continue
-		if int(other["layer"]) <= sl:
-			continue
-		var ox: int = int(other["grid_x"])
-		var oy: int = int(other["grid_y"])
-		if abs(ox - sx) < 2 and abs(oy - sy) < 2:
+static func _is_free_id(tile_id: int, on_board: Dictionary, coverers: Dictionary) -> bool:
+	if not coverers.has(tile_id):
+		return true
+	for coverer_id in coverers[tile_id]:
+		if on_board.has(coverer_id):
 			return false
 	return true
+
+
+static func _triple_cache_key(triple: Array, placed: Array) -> int:
+	var h: int = placed.size() * 131
+	for t in triple:
+		h = (h * 131) ^ int(t["id"])
+	for p in placed:
+		h = (h * 131) ^ int(p["id"])
+	return h
+
+
+static func _cache_collect_result(cache: Dictionary, key: int, value: bool) -> void:
+	if cache.size() >= COLLECT_CACHE_MAX_ENTRIES:
+		cache.clear()
+	cache[key] = value
