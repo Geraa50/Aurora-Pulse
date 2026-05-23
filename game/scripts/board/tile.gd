@@ -151,11 +151,18 @@ func play_move_to(target_position: Vector2, duration: float = 0.22) -> void:
 	_kill_tween()
 	state = State.IN_SLOT
 	z_index = 1000
+	mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_apply_visual()
 	_active_tween = create_tween()
 	_active_tween.set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
 	_active_tween.tween_property(self, "position", target_position, duration)
 	_active_tween.parallel().tween_property(self, "scale", Vector2(SELECT_SCALE, SELECT_SCALE), duration)
+	_active_tween.finished.connect(_on_move_to_slot_finished, CONNECT_ONE_SHOT)
+
+
+func _on_move_to_slot_finished() -> void:
+	if state == State.IN_SLOT:
+		mouse_filter = Control.MOUSE_FILTER_STOP
 
 
 ## Анимация возврата на доску (Board уже сделал reparent в BoardArea).
@@ -166,6 +173,7 @@ func play_move_to(target_position: Vector2, duration: float = 0.22) -> void:
 func play_return_home(duration: float = 0.3) -> void:
 	_kill_tween()
 	state = State.ON_BOARD
+	mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_apply_visual()
 	_active_tween = create_tween()
 	_active_tween.set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
@@ -173,6 +181,7 @@ func play_return_home(duration: float = 0.3) -> void:
 	_active_tween.parallel().tween_property(self, "scale", home_scale, duration)
 	await _active_tween.finished
 	z_index = layer_z_index()
+	mouse_filter = Control.MOUSE_FILTER_STOP
 	_apply_visual()
 
 
@@ -261,14 +270,21 @@ func layer_z_index() -> int:
 # --- Input handling ------------------------------------------------------
 
 func _on_gui_input(event: InputEvent) -> void:
-	if event is InputEventMouseButton:
-		var mb: InputEventMouseButton = event as InputEventMouseButton
-		if mb.button_index == MOUSE_BUTTON_LEFT and mb.pressed:
-			accept_event()
-			clicked.emit(self)
-	elif event is InputEventScreenTouch:
+	# Один жест = один сигнал. На touch-устройствах emulate_mouse_from_touch
+	# дублирует ScreenTouch мышиным событием; после снятия верхнего тайла оно
+	# часто попадало в только что открытый нижний (двойной выбор).
+	# Мышь без тача — только на десктопе без эмуляции (редко в этом проекте).
+	if event is InputEventScreenTouch:
 		var st: InputEventScreenTouch = event as InputEventScreenTouch
 		if st.pressed:
+			accept_event()
+			clicked.emit(self)
+	elif event is InputEventMouseButton:
+		# На тач-экранах тот же жест уже пришёл как ScreenTouch (см. emulate_mouse_from_touch).
+		if DisplayServer.is_touchscreen_available():
+			return
+		var mb: InputEventMouseButton = event as InputEventMouseButton
+		if mb.button_index == MOUSE_BUTTON_LEFT and mb.pressed:
 			accept_event()
 			clicked.emit(self)
 

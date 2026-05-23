@@ -35,6 +35,9 @@ const HALF_CELL: Vector2 = Vector2(84, 104)  # такая, чтобы 2 half-cel
 const LAYER_LIFT: Vector2 = Vector2(-6, -10)
 const SLOT_COUNT: int = 3
 const DUPLICATE_CLICK_MS: int = 140
+# После выбора плитки блокируем новые тапы: touch + эмулированный mouse и
+# мгновенное «открытие» нижнего тайла иначе дают 2 выбора за один жест.
+const TILE_INPUT_LOCK_MS: int = 280
 # Отступ от краёв PlayArea, чтобы пирамида не упиралась в стенки.
 const BOARD_MARGIN: float = 24.0
 # Минимальный масштаб плиток — ниже становится нечитаемо.
@@ -60,6 +63,7 @@ var _resolving: bool = false
 var _building: bool = false
 var _last_click_tile_id: int = -1
 var _last_click_msec: int = -1000
+var _tile_input_lock_until_msec: int = 0
 # Монотонный токен текущего билда. Каждый новый build_level увеличивает счётчик;
 # асинхронные продолжения предыдущего билда сравнивают токен и тихо выходят.
 var _build_token: int = 0
@@ -197,6 +201,8 @@ func _on_tile_clicked(tile: Tile) -> void:
 		return
 
 	var now: int = Time.get_ticks_msec()
+	if now < _tile_input_lock_until_msec:
+		return
 	if tile.tile_id == _last_click_tile_id and now - _last_click_msec <= DUPLICATE_CLICK_MS:
 		return
 	_last_click_tile_id = tile.tile_id
@@ -222,6 +228,7 @@ func _on_tile_clicked(tile: Tile) -> void:
 		return
 
 	AudioManager.play_sfx(&"tile_tap")
+	_tile_input_lock_until_msec = now + TILE_INPUT_LOCK_MS
 	_send_tile_to_slot(tile, slot_idx)
 
 	if _all_slots_full():
@@ -230,10 +237,13 @@ func _on_tile_clicked(tile: Tile) -> void:
 
 
 func _send_tile_to_slot(tile: Tile, slot_idx: int) -> void:
+	# Сразу не ловим второй жест (touch + mouse) пока тайл ещё над нижним.
+	tile.set_click_passable(true)
 	tile.play_press_bounce()
 	_slot_occupants[slot_idx] = tile
 	_set_record_on_board(tile.tile_id, false)
-	_refresh_blocked_visuals()
+	# Открываем нижние плитки со следующего кадра — иначе тот же тап попадает в них.
+	call_deferred("_refresh_blocked_visuals")
 	var target: Vector2 = _slot_center_in_tiles_root(slot_idx) - TILE_SIZE * 0.5
 	tile.play_move_to(target)
 
@@ -245,8 +255,10 @@ func _return_tile_home(tile: Tile) -> void:
 			_slot_occupants[i] = null
 			break
 	_set_record_on_board(tile.tile_id, true)
+	tile.set_click_passable(true)
+	_tile_input_lock_until_msec = Time.get_ticks_msec() + TILE_INPUT_LOCK_MS
 	tile.play_return_home()
-	_refresh_blocked_visuals()
+	call_deferred("_refresh_blocked_visuals")
 
 
 func _resolve_triple() -> void:
