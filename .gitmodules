@@ -1,0 +1,9 @@
+[submodule "tools/ast-index"]
+	path = tools/ast-index
+	url = https://github.com/defendend/Claude-ast-index-search.git
+[submodule "tools/caveman"]
+	path = tools/caveman
+	url = https://github.com/JuliusBrussee/caveman.git
+[submodule "tools/dae"]
+	path = tools/dae
+	url = https://github.com/swingerman/disciplined-agentic-engineering.git

@@ -1,0 +1,16 @@
+{
+  "name": "aurora-pulse-tools",
+  "owner": {
+    "name": "Geraa50"
+  },
+  "metadata": {
+    "description": "Local Cursor plugins for Aurora-Pulse (ast-index from submodule)."
+  },
+  "plugins": [
+    {
+      "name": "ast-index",
+      "source": "../tools/ast-index/plugin",
+      "description": "Fast structural code search (GDScript supported)."
+    }
+  ]
+}

@@ -1,0 +1,162 @@
+[gd_scene load_steps=7 format=3 uid="uid://game01"]
+
+[ext_resource type="Script" uid="uid://c6b7gd5iaddw6" path="res://scripts/ui/game_screen.gd" id="1_game"]
+[ext_resource type="PackedScene" path="res://scenes/board.tscn" id="2_board"]
+
+[sub_resource type="Gradient" id="GradientBG"]
+offsets = PackedFloat32Array(0, 0.55, 1)
+colors = PackedColorArray(0.106, 0.290, 0.416, 1, 0.141, 0.106, 0.271, 1, 0.043, 0.055, 0.165, 1)
+
+[sub_resource type="GradientTexture2D" id="GradientTexBG"]
+gradient = SubResource("GradientBG")
+fill_from = Vector2(0.5, 0)
+fill_to = Vector2(0.5, 1)
+width = 1080
+height = 1920
+
+[sub_resource type="StyleBoxFlat" id="StyleProgressBG"]
+bg_color = Color(0.043, 0.055, 0.165, 0.6)
+border_color = Color(0.604, 0.639, 0.780, 0.4)
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+corner_radius_top_left = 12
+corner_radius_top_right = 12
+corner_radius_bottom_left = 12
+corner_radius_bottom_right = 12
+
+[sub_resource type="StyleBoxFlat" id="StyleProgressFill"]
+bg_color = Color(0.486, 0.961, 1, 1)
+corner_radius_top_left = 12
+corner_radius_top_right = 12
+corner_radius_bottom_left = 12
+corner_radius_bottom_right = 12
+
+[node name="Game" type="Control"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+script = ExtResource("1_game")
+
+[node name="Background" type="TextureRect" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+texture = SubResource("GradientTexBG")
+expand_mode = 1
+stretch_mode = 6
+
+[node name="SafeArea" type="MarginContainer" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_constants/margin_left = 32
+theme_override_constants/margin_top = 48
+theme_override_constants/margin_right = 32
+theme_override_constants/margin_bottom = 48
+
+[node name="VBox" type="VBoxContainer" parent="SafeArea"]
+layout_mode = 2
+theme_override_constants/separation = 20
+
+[node name="HeaderRow" type="HBoxContainer" parent="SafeArea/VBox"]
+layout_mode = 2
+theme_override_constants/separation = 16
+
+[node name="LevelLabel" type="Label" parent="SafeArea/VBox/HeaderRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "Уровень 1"
+theme_override_colors/font_color = Color(0.941, 0.957, 1, 1)
+theme_override_font_sizes/font_size = 40
+
+[node name="ScoreLabel" type="Label" parent="SafeArea/VBox/HeaderRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "Очки: 0"
+horizontal_alignment = 2
+theme_override_colors/font_color = Color(0.604, 0.639, 0.780, 1)
+theme_override_font_sizes/font_size = 36
+
+[node name="ProgressBar" type="ProgressBar" parent="SafeArea/VBox"]
+custom_minimum_size = Vector2(0, 28)
+layout_mode = 2
+theme_override_styles/background = SubResource("StyleProgressBG")
+theme_override_styles/fill = SubResource("StyleProgressFill")
+max_value = 100.0
+value = 0.0
+show_percentage = false
+
+[node name="BoardArea" type="PanelContainer" parent="SafeArea/VBox"]
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 3
+mouse_filter = 1
+
+[node name="Board" parent="SafeArea/VBox/BoardArea" instance=ExtResource("2_board")]
+layout_mode = 2
+
+[node name="MenuButton" type="Button" parent="SafeArea/VBox"]
+custom_minimum_size = Vector2(0, 96)
+layout_mode = 2
+size_flags_horizontal = 3
+text = "В меню"
+theme_override_font_sizes/font_size = 32
+theme_override_colors/font_color = Color(0.941, 0.957, 1, 1)
+
+[node name="LevelCompleteOverlay" type="ColorRect" parent="."]
+visible = false
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 0
+color = Color(0.043, 0.055, 0.165, 0.78)
+
+[node name="OverlayCenter" type="CenterContainer" parent="LevelCompleteOverlay"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="OverlayVBox" type="VBoxContainer" parent="LevelCompleteOverlay/OverlayCenter"]
+custom_minimum_size = Vector2(640, 0)
+layout_mode = 2
+theme_override_constants/separation = 28
+alignment = 1
+
+[node name="OverlayTitle" type="Label" parent="LevelCompleteOverlay/OverlayCenter/OverlayVBox"]
+layout_mode = 2
+text = "Уровень пройден!"
+horizontal_alignment = 1
+theme_override_colors/font_color = Color(0.941, 0.957, 1, 1)
+theme_override_font_sizes/font_size = 72
+
+[node name="OverlayPercent" type="Label" parent="LevelCompleteOverlay/OverlayCenter/OverlayVBox"]
+layout_mode = 2
+text = "100%"
+horizontal_alignment = 1
+theme_override_colors/font_color = Color(0.486, 0.961, 1, 1)
+theme_override_font_sizes/font_size = 144
+
+[node name="NextButton" type="Button" parent="LevelCompleteOverlay/OverlayCenter/OverlayVBox"]
+custom_minimum_size = Vector2(0, 120)
+layout_mode = 2
+size_flags_horizontal = 3
+text = "Дальше"
+theme_override_font_sizes/font_size = 44

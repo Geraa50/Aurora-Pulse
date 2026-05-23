@@ -1,0 +1,65 @@
+---
+description: Use ast-index for fast GDScript/code navigation in this repo.
+alwaysApply: true
+---
+
+# ast-index — обязательная навигация по коду
+
+Используй `ast-index` **первым** для всех задач поиска по коду: файлы, символы, классы, использования, аутлайны. `grep`/`Grep` — только если `ast-index` вернул пусто или нужен поиск строкового литерала / регулярки.
+
+## Конфиг проекта
+
+Скоуп индекса определён в `.ast-index.yaml` (корень репо):
+
+- индексируется: `game/scripts`, `game/scenes`, `features`, `docs`, `scripts`;
+- исключено: `game/.godot`, сабмодули `tools/*`, `.cursor*`, `.git`.
+
+## Жизненный цикл индекса
+
+```powershell
+# Первый раз / после большого refactor / смены конфига
+ast-index rebuild
+
+# После git pull / rebase / checkout / edit
+ast-index update
+
+# Фоновый watcher (опционально, держать в отдельном терминале)
+ast-index watch
+
+# Диагностика
+ast-index stats
+ast-index db-path
+```
+
+**Перед первым запросом** выполни `ast-index stats`. Если индекса нет — `ast-index rebuild` из корня (`C:\Users\Geraa\Desktop\pulse`).
+
+## Правила поиска (mandatory)
+
+1. **ВСЕГДА `ast-index` ПЕРВЫМ** для поиска кода.
+2. **НЕ дублируй** — если `ast-index` нашёл, это полный ответ, не запускай grep после.
+3. `Grep` — только при empty-результате или regex/literal search.
+
+## Правила чтения файлов (mandatory)
+
+Для файлов **длиннее 500 строк** сначала `ast-index outline <file>`, затем `Read` только нужного слайса через `offset` / `limit`. Не читай большие файлы целиком.
+
+## Частые команды
+
+```powershell
+ast-index search "Tile"               # широкий поиск
+ast-index symbol "MatchRules"         # символ по имени
+ast-index class "Board"               # класс/тип
+ast-index usages "is_valid_triple"    # где используется
+ast-index callers "spawn_tile"        # кто вызывает
+ast-index outline "game/scripts/board/board.gd"
+ast-index imports "game/scripts/board/board.gd"
+ast-index map --limit 20              # компактная карта проекта
+ast-index changed                     # что изменилось в текущем diff
+ast-index todo                        # все TODO
+```
+
+JSON для скриптов: `ast-index --format json search "Tile"`.
+
+## Сабагенты
+
+При спавне сабагента всегда явно передавай эти правила в промпт — многие системы не пробрасывают rule-файлы автоматически.

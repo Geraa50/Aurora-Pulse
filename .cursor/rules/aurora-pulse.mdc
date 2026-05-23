@@ -1,0 +1,43 @@
+---
+description: Aurora-Pulse — Triple Mahjong for Devfest, Godot → Aurora OS.
+alwaysApply: true
+---
+
+# Aurora-Pulse
+
+Match-3 / Triple Mahjong puzzle for [Devfest Hackathon](https://www.devfest.ru/program/2dc181dc-2adf-47bf-af8d-b80f43d16fd2/).
+
+## Stack
+
+- **Engine (dev):** Godot 4.x, GDScript
+- **Target:** Aurora OS (Sailfish-derived), touch-only, no physical keyboard in release build
+- **Repo:** https://github.com/Geraa50/Aurora-Pulse
+
+## Hackathon requirements (must ship)
+
+1. At least one **completed level** (win/lose loop, restart)
+2. **Touch-only** input — tap/drag; keyboard only in editor debug if needed
+3. **Feedback:** score, stars, progress bar, or level counter
+4. **Assets:** original or clearly licensed (CC0 / open); keep `docs/ASSETS.md`
+
+## Game design (Triple Mahjong)
+
+- Board: stacked/layered tiles (classic mahjong solitaire layout, simplified for MVP)
+- Player selects **3 identical** free tiles → they clear
+- Tile **free** if nothing on top and at least one long side open
+- Win: board empty. Lose: no valid triples left (optional shuffle/hint later)
+
+## Code layout
+
+- `game/` — Godot project root (`project.godot`)
+- `game/scripts/` — gameplay (`board`, `tile`, `level`, `game_manager`)
+- `game/scenes/` — UI + level scenes
+- `game/assets/` — art/audio + licenses
+- `docs/DEVELOPMENT_PLAN.md` — roadmap
+- `features/` — DAE specs (when using disciplined-agentic-engineering)
+
+## Porting notes (Aurora)
+
+- Keep input in one `TouchInput` / UI layer; no hard dependency on desktop keys
+- Prefer Control-based UI over raw `_input` for Sailfish gestures
+- Plan Aurora package (RPM/QML shell or Godot export template) in phase 4 of dev plan

@@ -1,0 +1,37 @@
+---
+description: Disciplined Agentic Engineering — spec-first features (optional).
+globs: features/**/*
+alwaysApply: false
+---
+
+# DAE workflow (Disciplined Agentic Engineering)
+
+Methodology repo: `tools/dae` — https://github.com/swingerman/disciplined-agentic-engineering
+
+Use for non-trivial features: charter → ACs → Gherkin spec → plan → implement → verify.
+
+## Claude Code (full toolkit)
+
+```text
+/plugin marketplace add swingerman/disciplined-agentic-engineering
+/plugin install engineer@disciplined-agentic-engineering
+/plugin install atdd@disciplined-agentic-engineering
+```
+
+Then run onboard once; per feature use checkpoints 0 → 8 from `tools/dae/README.md`.
+
+## Cursor (this repo)
+
+1. Copy or init `CHARTER.md` at repo root (architecture, layers, naming, test stance).
+2. Create `features/NNN-short-name/` with `feature.md`, `acs.md`, `spec.md`, `plan.md`.
+3. Implement only after human approves `spec.md` + architecture section of `plan.md`.
+4. Two test streams where applicable: acceptance (Gherkin/scene tests) + unit (GUT/godot tests).
+
+## Suggested feature folders for this game
+
+- `001-core-triple-match` — select 3 tiles, clear, free-tile rules
+- `002-level-01` — one shippable level + win screen
+- `003-touch-ui` — HUD, score, progress, touch targets
+- `004-aurora-port` — export constraints, input, packaging
+
+Do not skip acceptance criteria for hackathon-mandatory behavior (touch-only, score/progress).

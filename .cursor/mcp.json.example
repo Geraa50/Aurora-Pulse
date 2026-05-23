@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "ast-index": {
+      "command": "ast-index-mcp",
+      "args": [],
+      "env": {
+        "AST_INDEX_ROOT": "C:\\Users\\Geraa\\Desktop\\pulse",
+        "AST_INDEX_BIN": "ast-index"
+      }
+    }
+  }
+}

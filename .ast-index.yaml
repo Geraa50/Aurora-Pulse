@@ -1,0 +1,35 @@
+# ast-index project config — Aurora Pulse (Godot 4.4.1 / GDScript)
+# Docs: tools/ast-index/USER_GUIDE.md
+#
+# Индексируем только исходники игры. Сабмодули, кэш Godot и сгенерированные
+# артефакты — мусор для навигации по символам.
+
+include:
+  - game/scripts
+  - game/scenes
+  - features
+  - docs
+  - scripts
+
+exclude:
+  # Godot import cache / build artifacts
+  - game/.godot
+  - game/.import
+  - game/.mono
+  - game/export
+
+  # Git submodules (свои индексы / другая кодовая база)
+  - tools/ast-index
+  - tools/caveman
+  - tools/dae
+
+  # Cursor / IDE / VCS
+  - .cursor
+  - .cursor-plugin
+  - .git
+
+  # Прочее
+  - "**/__pycache__"
+  - "**/node_modules"
+  - "**/dist"
+  - "**/build"

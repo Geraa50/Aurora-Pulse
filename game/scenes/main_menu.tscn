@@ -1,0 +1,88 @@
+[gd_scene load_steps=4 format=3 uid="uid://mainmenu01"]
+
+[ext_resource type="Script" uid="uid://drqx6scgmoxb6" path="res://scripts/ui/main_menu.gd" id="1_menu"]
+
+[sub_resource type="Gradient" id="GradientMenu"]
+offsets = PackedFloat32Array(0, 0.55, 1)
+colors = PackedColorArray(0.106, 0.29, 0.416, 1, 0.141, 0.106, 0.271, 1, 0.043, 0.055, 0.165, 1)
+
+[sub_resource type="GradientTexture2D" id="GradientTexMenu"]
+gradient = SubResource("GradientMenu")
+width = 1080
+height = 1920
+fill_from = Vector2(0.5, 0)
+fill_to = Vector2(0.5, 1)
+
+[node name="MainMenu" type="Control"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+script = ExtResource("1_menu")
+
+[node name="Background" type="TextureRect" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+texture = SubResource("GradientTexMenu")
+expand_mode = 1
+stretch_mode = 6
+
+[node name="SafeArea" type="MarginContainer" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_constants/margin_left = 64
+theme_override_constants/margin_top = 120
+theme_override_constants/margin_right = 64
+theme_override_constants/margin_bottom = 120
+
+[node name="VBox" type="VBoxContainer" parent="SafeArea"]
+layout_mode = 2
+theme_override_constants/separation = 40
+alignment = 1
+
+[node name="Title" type="Label" parent="SafeArea/VBox"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_colors/font_color = Color(0.941, 0.957, 1, 1)
+theme_override_font_sizes/font_size = 112
+text = "Aurora Pulse"
+horizontal_alignment = 1
+
+[node name="Subtitle" type="Label" parent="SafeArea/VBox"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_colors/font_color = Color(0.486, 0.961, 1, 1)
+theme_override_font_sizes/font_size = 44
+text = "Triple Mahjong"
+horizontal_alignment = 1
+
+[node name="Spacer" type="Control" parent="SafeArea/VBox"]
+custom_minimum_size = Vector2(0, 120)
+layout_mode = 2
+
+[node name="PlayButton" type="Button" parent="SafeArea/VBox"]
+custom_minimum_size = Vector2(0, 150)
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_colors/font_color = Color(0.941, 0.957, 1, 1)
+theme_override_font_sizes/font_size = 52
+text = "Играть"
+
+[node name="ExitButton" type="Button" parent="SafeArea/VBox"]
+custom_minimum_size = Vector2(0, 150)
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_colors/font_color = Color(0.941, 0.957, 1, 1)
+theme_override_font_sizes/font_size = 52
+text = "Выйти"

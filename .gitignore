@@ -1,0 +1,29 @@
+# Godot
+.godot/
+*.import
+export_presets.cfg
+export/
+
+# OS / IDE
+.DS_Store
+Thumbs.db
+*.swp
+.idea/
+.vscode/
+
+# ast-index
+.ast-index/
+*.ast-index.db
+
+# Secrets
+.env
+*.keystore
+
+# Build artifacts
+build/
+dist/
+*.apk
+*.rpm
+
+# Agent tooling (local only; submodules stay tracked)
+tools/caveman/.agents/
